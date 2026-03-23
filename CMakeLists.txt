@@ -4,16 +4,11 @@ project(stair_detector_project LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(USE_ROS2 "Enable ROS2 publisher for /cmd_vel" OFF)
-
 find_package(realsense2 REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
 
-if(USE_ROS2)
-  find_package(rclcpp REQUIRED)
-  find_package(geometry_msgs REQUIRED)
-  add_compile_definitions(USE_ROS2)
-endif()
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 add_executable(stair_detector
   src/main.cpp

@@ -4,11 +4,9 @@
 #include <iostream>
 #include <string>
 
-#ifdef USE_ROS2
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <thread>
-#endif
 
 class RobotController {
 public:
@@ -20,7 +18,6 @@ public:
     void stop();
 
 private:
-#ifdef USE_ROS2
     std::shared_ptr<rclcpp::Node> node_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_;
     std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> exec_;
@@ -34,5 +31,4 @@ private:
     // start/stop micro-ROS agent (controlled by env var MICRO_ROS_AUTOSTART="1")
     void start_micro_ros_agent_if_requested();
     void stop_micro_ros_agent_if_started();
-#endif
 };
