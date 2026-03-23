@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
     double detect_dist = 0.6;
     double step_var = 0.08;
     double forward_speed = 0.12;
-    double sweep_angular = 0.6;
-    double sweep_time = 0.8;
+    double sweep_linear = 0.12;
+    double sweep_time = 3;
     double post_flip_forward = 1.0;
 
     RealSenseStairDetector det(width, height, true);
@@ -44,12 +44,14 @@ int main(int argc, char **argv) {
                 }
             } else if (state == State::SWEEP) {
                 std::cout << "Sweeping left\n";
-                ctrl.set_velocity(0.0, 0.0, sweep_angular);
+                ctrl.set_velocity(0.0, sweep_linear, 0.0);
                 std::this_thread::sleep_for(std::chrono::duration<double>(sweep_time));
                 std::cout << "Sweeping right\n";
-                ctrl.set_velocity(0.0, 0.0, -sweep_angular);
-                std::this_thread::sleep_for(std::chrono::duration<double>(sweep_time));
+                ctrl.set_velocity(0.0, - sweep_linear, 0.0);
+                std::this_thread::sleep_for(std::chrono::duration<double>(2 * sweep_time));
                 std::cout << "Centering and stop\n";
+                ctrl.set_velocity(0.0, sweep_linear, 0.0);
+                std::this_thread::sleep_for(std::chrono::duration<double>(sweep_time));
                 ctrl.stop();
                 state = State::FLIP;
             } else if (state == State::FLIP) {
