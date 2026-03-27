@@ -9,7 +9,7 @@ SERVO_ID_2 = 2  # 对应从 180 度转到 0 度的舵机
 # 树莓派 Ubuntu 系统的串口设备名:
 # 树莓派在 Ubuntu 下硬件串口通常被识别为 '/dev/ttyS0' (Mini UART) 或 '/dev/ttyAMA0'
 # 如果使用 USB 转串口，通常为 '/dev/ttyUSB0'
-SERIAL_PORT = '/dev/ttyS0'
+SERIAL_PORT = '/dev/ttyAMA0'
 BAUDRATE = 115200
 
 # ==========================================
