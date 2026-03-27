@@ -38,7 +38,7 @@ private:
     rs2::pipeline pipe_;
     rs2::config cfg_;
     rs2::align align_{RS2_STREAM_COLOR};
-    bool use_align_ = false;
+    bool use_align_ = true;
     float depth_scale_ = 0.001f;
     int width_, height_;
 };

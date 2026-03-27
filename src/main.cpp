@@ -11,7 +11,7 @@ enum class State { FORWARD, SWEEP, FLIP };
 int main(int argc, char **argv) {
     // parameters (tweak as needed)
     int width = 640, height = 480;
-    double detect_dist = 0.6;
+    double detect_dist = 0.1;
     double step_var = 0.08;
     double forward_speed = 0.12;
     double sweep_linear = 0.12;
