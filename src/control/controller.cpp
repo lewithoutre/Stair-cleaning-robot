@@ -100,3 +100,9 @@ void RobotController::set_velocity(double linear_x, double linear_y, double angu
 }
 
 void RobotController::stop() { set_velocity(0.0, 0.0, 0.0); }
+
+bool RobotController::is_connected() const {
+    if (!pub_) return false;
+    // 如果有任何客户端订阅了 /cmd_vel (比如底层的 micro_ros_agent 及 ESP32)，数量将 > 0
+    return pub_->get_subscription_count() > 0;
+}

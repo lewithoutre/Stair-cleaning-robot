@@ -17,6 +17,9 @@ public:
     void set_velocity(double linear_x, double linear_y, double angular_z);
     void stop();
 
+    // 检查是否有节点 (如 ESP32) 正在订阅我们的速度话题
+    bool is_connected() const;
+
 private:
     std::shared_ptr<rclcpp::Node> node_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_;

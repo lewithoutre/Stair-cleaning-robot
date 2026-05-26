@@ -24,7 +24,11 @@ int main(int argc, char** argv) {
         char cmd;
         
         while (rclcpp::ok()) {
-            std::cout << "\nCmd: ";
+            // 在输入前，先去查询一次底层的网络连接状态
+            bool is_active = controller.is_connected();
+            std::cout << "\n[Status] ESP32 Connected: " << (is_active ? "YES 🟢" : "NO 🔴") << std::endl;
+            
+            std::cout << "Cmd: ";
             std::cin >> cmd;
             
             if (cmd == 'q') {
