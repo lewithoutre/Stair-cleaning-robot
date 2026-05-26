@@ -55,7 +55,7 @@ void RobotController::start_micro_ros_agent_if_requested() {
 
     const char *dev = std::getenv("MICRO_ROS_DEV");
     const char *baud = std::getenv("MICRO_ROS_BAUD");
-    if (!dev) dev = "/dev/ttyUSB0";
+    if (!dev) dev = "/dev/ttyACM0"; // ==== 已修改：默认指向正确的 ESP32-S3 原生 USB 串口 ====
     if (!baud) baud = "921600";
 
     agent_dev_ = dev;
