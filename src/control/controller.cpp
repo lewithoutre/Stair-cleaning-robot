@@ -13,7 +13,11 @@ RobotController::RobotController() {
     // Optionally start micro-ROS agent if requested via environment
     start_micro_ros_agent_if_requested();
 
-    rclcpp::init(0, nullptr);
+    // Check if rclcpp is already initialized (e.g. if we called it from test_wheels.cpp main)
+    if (!rclcpp::contexts::get_global_default_context()->is_valid()) {
+        rclcpp::init(0, nullptr);
+    }
+    
     node_ = std::make_shared<rclcpp::Node>("stair_controller_cpp");
     pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     exec_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
@@ -33,7 +37,11 @@ RobotController::~RobotController() {
     try {
         if (spin_thread_.joinable()) spin_thread_.join();
     } catch(...) {}
-    try { rclcpp::shutdown(); } catch(...) {}
+    try { 
+        if (rclcpp::contexts::get_global_default_context()->is_valid()) {
+            rclcpp::shutdown(); 
+        }
+    } catch(...) {}
 
     // stop agent if we started it
     stop_micro_ros_agent_if_started();
