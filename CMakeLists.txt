@@ -24,8 +24,10 @@ target_include_directories(stair_detector PRIVATE
   ${geometry_msgs_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/include
 )
-target_link_libraries(stair_detector PRIVATE realsense2 ${OpenCV_LIBS} rclcpp::rclcpp)
-
-if(TARGET geometry_msgs::geometry_msgs)
-  target_link_libraries(stair_detector PRIVATE geometry_msgs::geometry_msgs)
-endif()
+target_link_libraries(stair_detector PRIVATE 
+  realsense2 
+  ${OpenCV_LIBS} 
+  rclcpp::rclcpp 
+  ${geometry_msgs_TARGETS}
+  ${geometry_msgs_LIBRARIES}
+)
