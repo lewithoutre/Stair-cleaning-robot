@@ -37,7 +37,7 @@ struct AppConfig {
     double roi_width_ratio = 0.40;
     double detect_dist = 0.75;
     double step_edge_thresh = 0.12;
-    double climb_start_dist = 0.05; // ==== 已修改：设置为 0.05m (5厘米) 这意味着它需要极为贴近台阶才会停住起跳 ====
+    double climb_start_dist = 0.05;
 
     double forward_speed = 0.10;
     double approach_speed = 0.06;
@@ -292,21 +292,37 @@ int main(int, char**) {
                     break;
 
                 case State::Approach:
-                    // 在 Approach 阶段，判断均值深度是否 <= 0.05 米
-                    if (metrics.mean_depth > 0.0 && metrics.mean_depth <= cfg.climb_start_dist) {
+                    // 当距离到达 0.15m （安全相机边界），不再依赖视觉，直接“盲走”剩余的距离！
+                    if (metrics.mean_depth > 0.0 && metrics.mean_depth <= 0.15) {
+                        std::cout << "[FSM] Reached stable vision limit (0.15m). Blind driving the remaining 10cm!" << std::endl;
+                        
+                        // 盲走策略：还有额外 10cm 要走 (因为你原本设定 0.05m 起跳，所以 0.15 - 0.05 = 0.1m)
+                        // 计算盲走需要的时间：时间 = 距离 / 速度
+                        double blind_drive_dist = 0.10; 
+                        double blind_drive_sec = blind_drive_dist / cfg.approach_speed;
+                        
+                        if (!drive_for(controller, cfg.approach_speed, 0.0, 0.0, blind_drive_sec, cfg.publish_period_sec)) {
+                            state = State::Error;
+                            break;
+                        }
+                        
                         controller.stop();
                         state = State::Sweep;
-                        std::cout << "[FSM] Reached climb distance (mean=" << std::fixed << std::setprecision(2) << metrics.mean_depth 
-                                  << "m <= " << cfg.climb_start_dist << "m). Starting to sweep & climb!" << std::endl;
-                    } else {
-                        // 还在 0.3m 到 0.05m 之间，以极慢速度逼近
+                        std::cout << "[FSM] Blind drive finished! Stopping and ready to sweep & climb!" << std::endl;
+                        
+                    } else if (metrics.mean_depth > 0.15) {
+                        // 还在 0.3m 到 0.15m 之间，继续依靠视觉慢速逼近
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
-                        lost_frames = detected ? 0 : lost_frames + 1;
-                        if (lost_frames > cfg.lost_frames) {
+                        lost_frames = 0; // 能看到大于 0.15 的，说明没丢
+                    } else {
+                        // 万一是突发的全黑 (比如反光或者突然后退导致看不到)，容错机制
+                        controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
+                        lost_frames++;
+                        if (lost_frames > 20) {
                             controller.stop();
                             confirmed_frames = 0;
                             state = State::Search;
-                            std::cout << "[FSM] Obstacle lost during approach, resume searching" << std::endl;
+                            std::cout << "[FSM] Obstacle lost during early approach, resume searching" << std::endl;
                         }
                     }
                     break;
