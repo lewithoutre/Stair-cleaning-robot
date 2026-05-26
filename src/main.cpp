@@ -37,7 +37,7 @@ struct AppConfig {
     double roi_width_ratio = 0.40;
     double detect_dist = 0.75;
     double step_edge_thresh = 0.12;
-    double climb_start_dist = 0.42;
+    double climb_start_dist = 0.05; // ==== 已修改：设置为 0.05m (5厘米) 这意味着它需要极为贴近台阶才会停住起跳 ====
 
     double forward_speed = 0.10;
     double approach_speed = 0.06;
@@ -291,10 +291,10 @@ int main(int, char**) {
                     break;
 
                 case State::Approach:
-                    if (metric_ready_to_climb(metrics, cfg)) {
+                    if (metrics.p10_depth < cfg.climb_start_dist) {
                         controller.stop();
                         state = State::Sweep;
-                        std::cout << "[FSM] climb distance reached, start cleaning sweep" << std::endl;
+                        std::cout << "[FSM] climb distance reached (dist=" << std::fixed << std::setprecision(2) << metrics.p10_depth << "m), start cleaning sweep" << std::endl;
                     } else {
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
                         lost_frames = detected ? 0 : lost_frames + 1;
