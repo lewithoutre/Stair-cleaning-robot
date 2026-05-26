@@ -47,3 +47,21 @@ target_link_libraries(test_detector PRIVATE
   realsense2 
   ${OpenCV_LIBS}
 )
+
+# === 新增：单开的 ESP32 轮子驱动(串口发/cmd_vel) 测试程序 ===
+add_executable(test_wheels
+  src/test_wheels.cpp
+  src/control/controller.cpp
+)
+
+target_include_directories(test_wheels PRIVATE
+  ${rclcpp_INCLUDE_DIRS}
+  ${geometry_msgs_INCLUDE_DIRS}
+  ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(test_wheels PRIVATE 
+  rclcpp::rclcpp 
+  ${geometry_msgs_TARGETS}
+  ${geometry_msgs_LIBRARIES}
+)
