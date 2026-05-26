@@ -98,109 +98,58 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     if (roi.empty()) return {false, m};
 
     cv::Mat roi_m = depth_to_meters(roi);
-    struct Pt { float c, r, iz; };
-    std::vector<Pt> pts;
-    pts.reserve(roi_m.rows * roi_m.cols);
+    std::vector<float> vals;
+    vals.reserve(roi_m.rows * roi_m.cols);
 
+    // 对于常见深度相机（如RealSense D435在640x480下），光心cy约在图像中间，焦距fy大约为386。
+    float cy = depth_u16.rows / 2.0f;
+    float fy = 386.0f;
+    int roi_y_offset = m.roi_box.y; // ROI 相对于全图的行偏移
+
+    // 简单粗暴的物理滤除：只保留 y <= 10cm 的点云，地面的物理高度通常 y > 10cm（在相机下方）
     for (int r = 0; r < roi_m.rows; ++r) {
         const float* pr = roi_m.ptr<float>(r);
-        for (int c = 0; c < roi_m.cols; ++c) {
-            float v = pr[c];
-            if (!is_valid_depth(v)) continue;
-            // 我们在伪3D空间运算，存储屏幕坐标(c, r)与 反转深度(1/v)
-            pts.push_back({(float)c, (float)r, 1.0f / v});
-        }
-    }
-    if (pts.empty()) return {false, m};
-
-    // ====== 基于 RANSAC 地面识别与滤除 ======
-    int best_inliers = 0;
-    float best_A = 0, best_B = 0, best_C = 0;
-
-    if (pts.size() > 50) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<size_t> dis(0, pts.size() - 1);
+        float actual_r = roi_y_offset + r;
         
-        // 抽取 60 组进行平面三角测算
-        for (int i = 0; i < 60; ++i) {
-            const auto& p1 = pts[dis(gen)];
-            const auto& p2 = pts[dis(gen)];
-            const auto& p3 = pts[dis(gen)];
-            
-            // 叉乘计算三点形成的平面法向量 (Nc, Nr, Nz)
-            float v1c = p2.c - p1.c, v1r = p2.r - p1.r, v1z = p2.iz - p1.iz;
-            float v2c = p3.c - p1.c, v2r = p3.r - p1.r, v2z = p3.iz - p1.iz;
-            float Nc = v1r * v2z - v1z * v2r;
-            float Nr = v1z * v2c - v1c * v2z;
-            float Nz = v1c * v2r - v1r * v2c;
-            
-            if (std::abs(Nz) < 1e-5f) continue;
-            float A = -Nc / Nz;
-            float B = -Nr / Nz;
-            float C = p1.iz - A * p1.c - B * p1.r;
-            
-            // 地面的物理常识约束：视角越往下（行数 r 变大，靠近画面底边），离机器人的距离应该越近（反向深度 iz 变大）。
-            // 如果 B < 0.001，意味着这是一面竖直的墙或者悬空的物体面，绝对不是地面！跳过！
-            if (B < 0.001f) continue; 
-            
-            int inliers = 0;
-            for (const auto& p : pts) {
-                float exp_iz = A * p.c + B * p.r + C;
-                // 用 inverse_depth 过滤，0.5f相当于在一米处容忍50cm误差，在0.5m容忍10cm上下波动
-                if (std::abs(p.iz - exp_iz) < 0.5f) inliers++;
-            }
-            
-            if (inliers > best_inliers) {
-                best_inliers = inliers;
-                best_A = A; best_B = B; best_C = C;
-            }
-        }
-    }
-    
-    // 如果有超过 15% 的像素点构成了一个完美的“左高右低”平面，我们就断定捕捉到了地面
-    bool found_ground = (best_inliers > pts.size() * 0.15f); 
-    
-    std::vector<float> vals;
-    vals.reserve(pts.size());
-    size_t close_count = 0;
+        for (int c = 0; c < roi_m.cols; ++c) {
+            float Z = pr[c];
+            if (!is_valid_depth(Z)) continue;
 
-    // 清洗像素：如果确定有地面，删除所有属于地面的点
-    for (const auto& p : pts) {
-        if (found_ground) {
-            float exp_iz = best_A * p.c + best_B * p.r + best_C;
-            // 误差在容忍范围内，认为是地板，扔掉！
-            if (std::abs(p.iz - exp_iz) < 0.5f) continue; 
+            // 根据针孔相机模型计算实际的物理 Y 坐标 (向下为正)
+            float physical_Y = (actual_r - cy) * Z / fy;
+
+            // 地面距离相机的垂直落差如果超过10cm (0.1m)，则剔除该点
+            // y > 0.10m 意味着点云在镜头正中心下方10厘米以上的位置
+            if (physical_Y > 0.10f) {
+                continue; // 滤除地面点
+            }
+            
+            // 剩下的视为有效障碍物点
+            vals.push_back(Z);
         }
-        float z = 1.0f / p.iz;
-        vals.push_back(z);
-        if (z < detect_dist) close_count++;
     }
-    
-    // 如果全被当成地面过滤光了（面前一片平坦），直接返回无障碍物
+
     if (vals.empty()) return {false, m};
 
-    // ====== 对剩下的“非地面纯障碍物像素”做特征计算 ======
+    // ====== 对剩下的障碍物像素计算简单的均值 ======
     m.valid_ratio = static_cast<double>(vals.size()) / static_cast<double>(roi_m.rows * roi_m.cols);
-    m.close_ratio = static_cast<double>(close_count) / static_cast<double>(vals.size());
-
-    std::sort(vals.begin(), vals.end());
+    
     double sum = std::accumulate(vals.begin(), vals.end(), 0.0);
-    m.mean_depth = sum / vals.size();
-    m.min_depth = percentile_sorted(vals, 0.02);
-    m.p10_depth = percentile_sorted(vals, 0.10);
-    m.median_depth = percentile_sorted(vals, 0.50);
+    m.mean_depth = sum / vals.size(); // 直接用均值作为障碍物距离
+    
+    // 为了兼容旧代码变量（比如test_detector），把其他指标都统一成均值
+    m.min_depth = m.mean_depth;     
+    m.p10_depth = m.mean_depth; 
+    m.median_depth = m.mean_depth;
 
-    m.vertical_step = 0.0; // 地面都被删了，就不用再算什么阶跃了！
+    m.vertical_step = 0.0;
     m.var_vertical = 0.0;
+    m.close_ratio = (m.mean_depth < detect_dist) ? 1.0 : 0.0;
 
-    // 既然地面已经被剔除了，只要这片区域还有2%的未知残留（凸起的台阶立面或者其它障碍），
-    // 并且中位数或者排在最前面的距离侵入了警报线，统统当作爬楼障碍处理！
-    const bool enough_obstacle = m.valid_ratio > 0.02;
-    const bool close_surface = (m.median_depth < detect_dist) ||
-                               (m.p10_depth < detect_dist * 0.85);
+    // 当剩余有足够的点，且均值距离进入探测范围，触发判定
+    const bool enough_obstacle = m.valid_ratio > 0.02; // 残留特征大于 2%
+    bool is_obstacle = enough_obstacle && (m.mean_depth <= detect_dist);
 
-    bool is_obstacle = enough_obstacle && close_surface;
     return {is_obstacle, m};
 }
 

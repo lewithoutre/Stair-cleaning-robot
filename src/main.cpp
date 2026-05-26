@@ -104,9 +104,9 @@ AppConfig load_config() {
 
     cfg.roi_height_ratio = env_double("STAIR_ROI_HEIGHT", cfg.roi_height_ratio);
     cfg.roi_width_ratio = env_double("STAIR_ROI_WIDTH", cfg.roi_width_ratio);
-    cfg.detect_dist = env_double("STAIR_DETECT_DIST", cfg.detect_dist);
+    cfg.detect_dist = 0.30; // ==== 已修改：设置为 0.3m 触发减速 ====
     cfg.step_edge_thresh = env_double("STAIR_STEP_EDGE", cfg.step_edge_thresh);
-    cfg.climb_start_dist = env_double("STAIR_CLIMB_START_DIST", cfg.climb_start_dist);
+    cfg.climb_start_dist = 0.05; // ==== 已修改：设置为 0.05m 停止起跳 ====
 
     cfg.forward_speed = env_double("STAIR_FORWARD_SPEED", cfg.forward_speed);
     cfg.approach_speed = env_double("STAIR_APPROACH_SPEED", cfg.approach_speed);
@@ -280,29 +280,33 @@ int main(int, char**) {
 
             switch (state) {
                 case State::Search:
+                    // 只有检测到 y<=10cm （去除了地面） 的障碍物点云且 <= 0.3m 时 (detect_dist为0.3m)，才会触发 detected
                     controller.set_velocity(cfg.forward_speed, 0.0, 0.0);
                     confirmed_frames = detected ? confirmed_frames + 1 : 0;
                     if (confirmed_frames >= cfg.confirm_frames) {
                         controller.stop();
                         lost_frames = 0;
                         state = State::Approach;
-                        std::cout << "[FSM] stair candidate confirmed, approaching slowly" << std::endl;
+                        std::cout << "[FSM] Obstacle detected within 0.3m, slowing down to approach" << std::endl;
                     }
                     break;
 
                 case State::Approach:
-                    if (metrics.p10_depth < cfg.climb_start_dist) {
+                    // 在 Approach 阶段，判断均值深度是否 <= 0.05 米
+                    if (metrics.mean_depth > 0.0 && metrics.mean_depth <= cfg.climb_start_dist) {
                         controller.stop();
                         state = State::Sweep;
-                        std::cout << "[FSM] climb distance reached (dist=" << std::fixed << std::setprecision(2) << metrics.p10_depth << "m), start cleaning sweep" << std::endl;
+                        std::cout << "[FSM] Reached climb distance (mean=" << std::fixed << std::setprecision(2) << metrics.mean_depth 
+                                  << "m <= " << cfg.climb_start_dist << "m). Starting to sweep & climb!" << std::endl;
                     } else {
+                        // 还在 0.3m 到 0.05m 之间，以极慢速度逼近
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
                         lost_frames = detected ? 0 : lost_frames + 1;
                         if (lost_frames > cfg.lost_frames) {
                             controller.stop();
                             confirmed_frames = 0;
                             state = State::Search;
-                            std::cout << "[FSM] candidate lost, resume searching" << std::endl;
+                            std::cout << "[FSM] Obstacle lost during approach, resume searching" << std::endl;
                         }
                     }
                     break;
