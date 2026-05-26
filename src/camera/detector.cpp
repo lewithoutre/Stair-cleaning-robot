@@ -35,6 +35,16 @@ RealSenseStairDetector::RealSenseStairDetector(int width, int height, bool align
     cfg_.enable_stream(RS2_STREAM_DEPTH, width_, height_, RS2_FORMAT_Z16, 30);
     cfg_.enable_stream(RS2_STREAM_COLOR, width_, height_, RS2_FORMAT_BGR8, 30);
     rs2::pipeline_profile prof = pipe_.start(cfg_);
+    
+    // 动态获取当前分辨率下、被对齐目标(通常是彩色图)的真实内参
+    rs2_stream target_stream = use_align_ ? RS2_STREAM_COLOR : RS2_STREAM_DEPTH;
+    auto stream_prof = prof.get_stream(target_stream).as<rs2::video_stream_profile>();
+    rs2_intrinsics intr = stream_prof.get_intrinsics();
+    fy_ = intr.fy;
+    cy_ = intr.ppy; // ppy对应的就是y方向的光心坐标
+    std::cout << "[Camera Info] Resolution: " << intr.width << "x" << intr.height 
+              << ", fy: " << fy_ << ", cy: " << cy_ << std::endl;
+
     auto dev = prof.get_device();
     if (dev && dev.query_sensors().size() > 0) {
         try {
@@ -101,9 +111,9 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     std::vector<float> vals;
     vals.reserve(roi_m.rows * roi_m.cols);
 
-    // 根据你实际的 ROS2 camera_info 数据配置相机内参
-    float optical_cy = 240.3789f; // 对应 K 矩阵的第 6 个值 (cy)
-    float fy = 422.1172f;         // 对应 K 矩阵的第 5 个值 (fy)
+    // 不要再写死内参，而是使用我们在构造函数里从相机硬件动态读取的 fy_ 和 cy_
+    float optical_cy = cy_; 
+    float fy = fy_;         
     int roi_y_offset = m.roi_box.y; // ROI 相对于全图的行偏移
 
     // 简单粗暴的物理滤除：只保留 y <= 10cm 的点云，地面的物理高度通常 y > 10cm（在相机下方）

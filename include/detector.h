@@ -45,5 +45,7 @@ private:
     rs2::align align_{RS2_STREAM_COLOR};
     bool use_align_ = true;
     float depth_scale_ = 0.001f;
+    float fy_ = 386.0f; // 动态焦距
+    float cy_ = 240.0f; // 动态光心
     int width_, height_;
 };
