@@ -31,3 +31,19 @@ target_link_libraries(stair_detector PRIVATE
   ${geometry_msgs_TARGETS}
   ${geometry_msgs_LIBRARIES}
 )
+
+# === 新增：单开的 Detector 测试程序 ===
+add_executable(test_detector
+  src/test_detector.cpp
+  src/camera/detector.cpp
+)
+
+target_include_directories(test_detector PRIVATE
+  ${OpenCV_INCLUDE_DIRS}
+  ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(test_detector PRIVATE 
+  realsense2 
+  ${OpenCV_LIBS}
+)
