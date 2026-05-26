@@ -69,10 +69,15 @@ void RobotController::start_micro_ros_agent_if_requested() {
     }
     if (pid == 0) {
         // child
-        const char *argv[] = {"micro_ros_agent", "serial", "--dev", agent_dev_.c_str(), "-b", agent_baud_.c_str(), nullptr};
-        execvp("micro_ros_agent", const_cast<char* const*>(argv));
+        // 使用 ros2 run 启动，因为 micro_ros_agent 的可执行文件通常不在直接的系统 PATH 里，
+        // 而是要依赖 ros2 命令来定位。
+        const char *argv[] = {
+            "ros2", "run", "micro_ros_agent", "micro_ros_agent", 
+            "serial", "-D", agent_dev_.c_str(), "-b", agent_baud_.c_str(), nullptr
+        };
+        execvp("ros2", const_cast<char* const*>(argv));
         // if execvp returns, error
-        std::cerr << "[RobotController] exec micro_ros_agent failed: " << std::strerror(errno) << std::endl;
+        std::cerr << "[RobotController] exec ros2 run micro_ros_agent failed: " << std::strerror(errno) << std::endl;
         _exit(127);
     }
     // parent
