@@ -101,9 +101,9 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     std::vector<float> vals;
     vals.reserve(roi_m.rows * roi_m.cols);
 
-    // 对于常见深度相机（如RealSense D435在640x480下），光心cy约在图像中间，焦距fy大约为386。
-    float cy = depth_u16.rows / 2.0f;
-    float fy = 386.0f;
+    // 根据你实际的 ROS2 camera_info 数据配置相机内参
+    float optical_cy = 240.3789f; // 对应 K 矩阵的第 6 个值 (cy)
+    float fy = 422.1172f;         // 对应 K 矩阵的第 5 个值 (fy)
     int roi_y_offset = m.roi_box.y; // ROI 相对于全图的行偏移
 
     // 简单粗暴的物理滤除：只保留 y <= 10cm 的点云，地面的物理高度通常 y > 10cm（在相机下方）
@@ -116,7 +116,7 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
             if (!is_valid_depth(Z)) continue;
 
             // 根据针孔相机模型计算实际的物理 Y 坐标 (向下为正)
-            float physical_Y = (actual_r - cy) * Z / fy;
+            float physical_Y = (actual_r - optical_cy) * Z / fy;
 
             // 地面距离相机的垂直落差如果超过10cm (0.1m)，则剔除该点
             // y > 0.10m 意味着点云在镜头正中心下方10厘米以上的位置
