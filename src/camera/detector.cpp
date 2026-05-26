@@ -1,5 +1,32 @@
 #include "detector.h"
+
+#include <algorithm>
+#include <cmath>
 #include <numeric>
+#include <vector>
+
+namespace {
+
+constexpr float kMinValidDepthM = 0.08f;
+constexpr float kMaxValidDepthM = 4.0f;
+
+bool is_valid_depth(float value) {
+    return std::isfinite(value) && value >= kMinValidDepthM && value <= kMaxValidDepthM;
+}
+
+double percentile_sorted(const std::vector<float>& sorted_values, double percentile) {
+    if (sorted_values.empty()) return 0.0;
+    if (percentile <= 0.0) return sorted_values.front();
+    if (percentile >= 1.0) return sorted_values.back();
+
+    const double index = percentile * static_cast<double>(sorted_values.size() - 1);
+    const auto lo = static_cast<size_t>(std::floor(index));
+    const auto hi = static_cast<size_t>(std::ceil(index));
+    const double t = index - static_cast<double>(lo);
+    return sorted_values[lo] * (1.0 - t) + sorted_values[hi] * t;
+}
+
+} // namespace
 
 RealSenseStairDetector::RealSenseStairDetector(int width, int height, bool align_to_color)
     : align_(RS2_STREAM_COLOR), use_align_(align_to_color), width_(width), height_(height)
@@ -55,8 +82,8 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     if (depth_u16.empty()) return {false, m};
     int h = depth_u16.rows;
     int w = depth_u16.cols;
-    int rw = static_cast<int>(w * roi_width_ratio);
-    int rh = static_cast<int>(h * roi_height_ratio);
+    int rw = std::clamp(static_cast<int>(w * roi_width_ratio), 1, w);
+    int rh = std::clamp(static_cast<int>(h * roi_height_ratio), 1, h);
     int cx = w / 2;
     int cy = static_cast<int>(h * (1.0 - roi_height_ratio / 2.0));
 
@@ -70,39 +97,45 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     if (roi.empty()) return {false, m};
 
     cv::Mat roi_m = depth_to_meters(roi);
-    cv::Mat valid_mask = roi_m > 0.0f;
-    if (cv::countNonZero(valid_mask) == 0) return {false, m};
-
-    // compute mean and min over valid
-    cv::Mat valid_vals;
-    roi_m.copyTo(valid_vals, valid_mask);
     std::vector<float> vals;
     vals.reserve(roi_m.rows * roi_m.cols);
-    for (int r = 0; r < valid_vals.rows; ++r) {
-        const float* pr = valid_vals.ptr<float>(r);
-        for (int c = 0; c < valid_vals.cols; ++c) {
+    size_t close_count = 0;
+    for (int r = 0; r < roi_m.rows; ++r) {
+        const float* pr = roi_m.ptr<float>(r);
+        for (int c = 0; c < roi_m.cols; ++c) {
             float v = pr[c];
-            if (v > 0) vals.push_back(v);
+            if (!is_valid_depth(v)) continue;
+            vals.push_back(v);
+            if (v < detect_dist) {
+                ++close_count;
+            }
         }
     }
     if (vals.empty()) return {false, m};
+
+    m.valid_ratio = static_cast<double>(vals.size()) / static_cast<double>(roi_m.rows * roi_m.cols);
+    m.close_ratio = static_cast<double>(close_count) / static_cast<double>(vals.size());
+
+    std::sort(vals.begin(), vals.end());
     double sum = std::accumulate(vals.begin(), vals.end(), 0.0);
     m.mean_depth = sum / vals.size();
-    m.min_depth = *std::min_element(vals.begin(), vals.end());
+    m.min_depth = percentile_sorted(vals, 0.02);
+    m.p10_depth = percentile_sorted(vals, 0.10);
+    m.median_depth = percentile_sorted(vals, 0.50);
 
-    // vertical gradient variance
-    cv::Mat diff;
-    cv::absdiff(roi_m.rowRange(1, roi_m.rows), roi_m.rowRange(0, roi_m.rows-1), diff);
-    cv::Mat diff_mask = diff > 0.0f;
     std::vector<float> gvals;
-    for (int r = 0; r < diff.rows; ++r) {
-        const float* pr = diff.ptr<float>(r);
-        const uchar* pm = diff_mask.ptr<uchar>(r);
-        for (int c = 0; c < diff.cols; ++c) {
-            if (pm[c]) gvals.push_back(pr[c]);
+    gvals.reserve(static_cast<size_t>(std::max(0, roi_m.rows - 1)) * roi_m.cols);
+    for (int r = 1; r < roi_m.rows; ++r) {
+        const float* prev = roi_m.ptr<float>(r - 1);
+        const float* cur = roi_m.ptr<float>(r);
+        for (int c = 0; c < roi_m.cols; ++c) {
+            if (!is_valid_depth(prev[c]) || !is_valid_depth(cur[c])) continue;
+            gvals.push_back(std::abs(cur[c] - prev[c]));
         }
     }
     if (!gvals.empty()) {
+        std::sort(gvals.begin(), gvals.end());
+        m.vertical_step = percentile_sorted(gvals, 0.95);
         double mean_g = std::accumulate(gvals.begin(), gvals.end(), 0.0) / gvals.size();
         double var = 0.0;
         for (double v : gvals) var += (v - mean_g)*(v - mean_g);
@@ -112,11 +145,17 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
         m.var_vertical = 0.0;
     }
 
-    bool is_obstacle = (m.mean_depth < detect_dist) || (m.min_depth < detect_dist * 0.8) || (m.var_vertical > step_variance_thresh);
+    const bool enough_depth = m.valid_ratio > 0.20;
+    const bool close_surface = (m.median_depth < detect_dist) ||
+                               (m.p10_depth < detect_dist * 0.85) ||
+                               (m.close_ratio > 0.18);
+    const bool depth_discontinuity = m.vertical_step > step_variance_thresh;
+    bool is_obstacle = enough_depth && (close_surface || depth_discontinuity);
     return {is_obstacle, m};
 }
 
 cv::Mat RealSenseStairDetector::colorize_depth(const cv::Mat &depth_u16, double clip_max) const {
+    if (depth_u16.empty()) return {};
     cv::Mat d_m = depth_to_meters(depth_u16);
     cv::Mat disp;
     cv::Mat norm = d_m / clip_max;

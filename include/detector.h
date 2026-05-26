@@ -8,7 +8,12 @@
 struct DetectMetrics {
     double mean_depth = 0.0;
     double min_depth = 0.0;
+    double median_depth = 0.0;
+    double p10_depth = 0.0;
+    double valid_ratio = 0.0;
+    double close_ratio = 0.0;
     double var_vertical = 0.0;
+    double vertical_step = 0.0;
     cv::Rect roi_box;
 };
 
@@ -28,7 +33,7 @@ public:
                                                    double roi_height_ratio = 0.35,
                                                    double roi_width_ratio = 0.4,
                                                    double detect_dist = 0.6,
-                                                   double step_variance_thresh = 0.08) const;
+                                                   double step_variance_thresh = 0.12) const;
 
     cv::Mat colorize_depth(const cv::Mat &depth_u16, double clip_max = 3.0) const;
 
