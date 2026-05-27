@@ -292,13 +292,13 @@ int main(int, char**) {
                     break;
 
                 case State::Approach:
-                    // 当距离到达 0.15m （安全相机边界），不再依赖视觉，直接“盲走”剩余的距离！
-                    if (metrics.mean_depth > 0.0 && metrics.mean_depth <= 0.15) {
-                        std::cout << "[FSM] Reached stable vision limit (0.15m). Blind driving the remaining 10cm!" << std::endl;
+                    // 当距离到达 0.2m （安全相机边界），不再依赖视觉，直接“盲走”剩余的距离！
+                    if (metrics.mean_depth > 0.0 && metrics.mean_depth <= 0.20) {
+                        std::cout << "[FSM] Reached stable vision limit (0.20m). Blind driving the remaining 15cm!" << std::endl;
                         
-                        // 盲走策略：还有额外 10cm 要走 (因为你原本设定 0.05m 起跳，所以 0.15 - 0.05 = 0.1m)
+                        // 盲走策略：需要直接盲走 0.15m 
                         // 计算盲走需要的时间：时间 = 距离 / 速度
-                        double blind_drive_dist = 0.10; 
+                        double blind_drive_dist = 0.15; 
                         double blind_drive_sec = blind_drive_dist / cfg.approach_speed;
                         
                         if (!drive_for(controller, cfg.approach_speed, 0.0, 0.0, blind_drive_sec, cfg.publish_period_sec)) {
@@ -310,10 +310,10 @@ int main(int, char**) {
                         state = State::Sweep;
                         std::cout << "[FSM] Blind drive finished! Stopping and ready to sweep & climb!" << std::endl;
                         
-                    } else if (metrics.mean_depth > 0.15) {
-                        // 还在 0.3m 到 0.15m 之间，继续依靠视觉慢速逼近
+                    } else if (metrics.mean_depth > 0.20) {
+                        // 还在 0.3m 到 0.2m 之间，继续依靠视觉慢速逼近
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
-                        lost_frames = 0; // 能看到大于 0.15 的，说明没丢
+                        lost_frames = 0; // 能看到大于 0.20 的，说明没丢
                     } else {
                         // 万一是突发的全黑 (比如反光或者突然后退导致看不到)，容错机制
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
