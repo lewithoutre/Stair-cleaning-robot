@@ -168,6 +168,18 @@ std::string fixed(double value, int precision = 2) {
     return oss.str();
 }
 
+std::string esp32_command_line(std::string command) {
+    while (!command.empty() && (command.back() == '\n' || command.back() == '\r')) {
+        command.pop_back();
+    }
+    command += "\r\n";
+    return command;
+}
+
+void send_esp32_command(ClimbAction& climb_action, const std::string& command) {
+    climb_action.send_serial_command(esp32_command_line(command));
+}
+
 bool metric_ready_to_climb(const DetectMetrics& m, const AppConfig& cfg) {
     if (m.valid_ratio <= 0.0) return false;
     const bool median_close = m.median_depth > 0.0 && m.median_depth <= cfg.climb_start_dist;
@@ -200,23 +212,23 @@ bool run_sweep(RobotController& ctrl, const AppConfig& cfg, ClimbAction& climb_a
     const double y = cfg.sweep_speed * static_cast<double>(cfg.sweep_direction);
 
     std::cout << "[FSM] start cleaning map (CLEAN_ON)" << std::endl;
-    climb_action.send_serial_command("CLEAN_ON\n");
+    send_esp32_command(climb_action, "CLEAN_ON");
 
     std::cout << "[FSM] sweep left" << std::endl;
     bool ok = drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec);
-    
+
     if (ok) {
         std::cout << "[FSM] sweep right" << std::endl;
         ok = drive_for(ctrl, 0.0, -y, 0.0, cfg.sweep_sec * 2.0, cfg.publish_period_sec);
     }
-    
+
     if (ok) {
         std::cout << "[FSM] return to center" << std::endl;
         ok = drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec);
     }
 
     std::cout << "[FSM] stop cleaning map (CLEAN_OFF)" << std::endl;
-    climb_action.send_serial_command("CLEAN_OFF\n");
+    send_esp32_command(climb_action, "CLEAN_OFF");
 
     return ok;
 }
@@ -328,7 +340,7 @@ int main(int, char**) {
                         // 万一是突发的全黑 (比如反光或者突然后退导致看不到)，容错机制
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
                         lost_frames++;
-                        if (lost_frames > 20) {
+                        if (lost_frames > cfg.lost_frames) {
                             controller.stop();
                             confirmed_frames = 0;
                             state = State::Search;
