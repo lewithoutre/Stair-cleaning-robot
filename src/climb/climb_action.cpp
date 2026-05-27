@@ -105,7 +105,7 @@ bool ClimbAction::run_once(int stair_index) {
 
     std::cout << "[ClimbAction] send climb command for stair " << stair_index
               << " on " << config_.serial_port << std::endl;
-    if (!send_serial_command(ensure_line_ending(config_.start_command))) {
+    if (!send_serial_command(config_.start_command)) {
         return false;
     }
 
@@ -162,8 +162,14 @@ void ClimbAction::close_serial() {
 }
 
 bool ClimbAction::send_serial_command(const std::string& command) {
-    const char* data = command.data();
-    size_t remaining = command.size();
+    if (!open_serial()) {
+        std::cerr << "[ClimbAction] cannot open serial port " << config_.serial_port << std::endl;
+        return false;
+    }
+
+    std::string safe_command = ensure_line_ending(command);
+    const char* data = safe_command.data();
+    size_t remaining = safe_command.size();
     while (remaining > 0) {
         ssize_t written = write(serial_fd_, data, remaining);
         if (written < 0) {

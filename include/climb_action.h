@@ -35,12 +35,13 @@ public:
     bool run_once(int stair_index);
     bool is_enabled() const;
 
+    bool send_serial_command(const std::string& command);
+
     static ClimbActionMode parse_mode(const std::string& value);
 
 private:
     bool open_serial();
     void close_serial();
-    bool send_serial_command(const std::string& command);
     bool wait_for_done_token();
 
     ClimbActionConfig config_;

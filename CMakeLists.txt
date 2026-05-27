@@ -65,3 +65,12 @@ target_link_libraries(test_wheels PRIVATE
   ${geometry_msgs_TARGETS}
   ${geometry_msgs_LIBRARIES}
 )
+
+# === 新增：单开的 ESP32 爬台阶与清扫测试终端 ===
+add_executable(test_esp32_commands
+  src/test_esp32_commands.cpp
+)
+
+# Linux / pthread 链接支持
+find_package(Threads REQUIRED)
+target_link_libraries(test_esp32_commands PRIVATE Threads::Threads)

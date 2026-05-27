@@ -196,19 +196,29 @@ bool drive_for(RobotController& ctrl,
     return g_running.load();
 }
 
-bool run_sweep(RobotController& ctrl, const AppConfig& cfg) {
+bool run_sweep(RobotController& ctrl, const AppConfig& cfg, ClimbAction& climb_action) {
     const double y = cfg.sweep_speed * static_cast<double>(cfg.sweep_direction);
 
+    std::cout << "[FSM] start cleaning map (CLEAN_ON)" << std::endl;
+    climb_action.send_serial_command("CLEAN_ON\n");
+
     std::cout << "[FSM] sweep left" << std::endl;
-    if (!drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec)) return false;
+    bool ok = drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec);
+    
+    if (ok) {
+        std::cout << "[FSM] sweep right" << std::endl;
+        ok = drive_for(ctrl, 0.0, -y, 0.0, cfg.sweep_sec * 2.0, cfg.publish_period_sec);
+    }
+    
+    if (ok) {
+        std::cout << "[FSM] return to center" << std::endl;
+        ok = drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec);
+    }
 
-    std::cout << "[FSM] sweep right" << std::endl;
-    if (!drive_for(ctrl, 0.0, -y, 0.0, cfg.sweep_sec * 2.0, cfg.publish_period_sec)) return false;
+    std::cout << "[FSM] stop cleaning map (CLEAN_OFF)" << std::endl;
+    climb_action.send_serial_command("CLEAN_OFF\n");
 
-    std::cout << "[FSM] return to center" << std::endl;
-    if (!drive_for(ctrl, 0.0, y, 0.0, cfg.sweep_sec, cfg.publish_period_sec)) return false;
-
-    return true;
+    return ok;
 }
 
 void draw_overlay(cv::Mat& vis,
@@ -329,7 +339,7 @@ int main(int, char**) {
 
                 case State::Sweep:
                     controller.stop();
-                    if (!run_sweep(controller, cfg)) {
+                    if (!run_sweep(controller, cfg, climb_action)) {
                         state = State::Error;
                         break;
                     }
