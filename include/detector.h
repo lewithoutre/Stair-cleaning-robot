@@ -2,6 +2,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <librealsense2/rs.hpp>
+#include <librealsense2/rsutil.h>
 #include <optional>
 #include <tuple>
 
@@ -45,7 +46,6 @@ private:
     rs2::align align_{RS2_STREAM_COLOR};
     bool use_align_ = true;
     float depth_scale_ = 0.001f;
-    float fy_ = 386.0f; // 动态焦距
-    float cy_ = 240.0f; // 动态光心
+    rs2_intrinsics intr_; // 完整的相机内参
     int width_, height_;
 };

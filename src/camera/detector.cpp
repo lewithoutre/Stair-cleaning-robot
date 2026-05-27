@@ -39,11 +39,9 @@ RealSenseStairDetector::RealSenseStairDetector(int width, int height, bool align
     // 动态获取当前分辨率下、被对齐目标(通常是彩色图)的真实内参
     rs2_stream target_stream = use_align_ ? RS2_STREAM_COLOR : RS2_STREAM_DEPTH;
     auto stream_prof = prof.get_stream(target_stream).as<rs2::video_stream_profile>();
-    rs2_intrinsics intr = stream_prof.get_intrinsics();
-    fy_ = intr.fy;
-    cy_ = intr.ppy; // ppy对应的就是y方向的光心坐标
-    std::cout << "[Camera Info] Resolution: " << intr.width << "x" << intr.height 
-              << ", fy: " << fy_ << ", cy: " << cy_ << std::endl;
+    intr_ = stream_prof.get_intrinsics();
+    std::cout << "[Camera Info] Resolution: " << intr_.width << "x" << intr_.height 
+              << ", fy: " << intr_.fy << ", cy: " << intr_.ppy << std::endl;
 
     auto dev = prof.get_device();
     if (dev && dev.query_sensors().size() > 0) {
@@ -111,10 +109,9 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
     std::vector<float> vals;
     vals.reserve(roi_m.rows * roi_m.cols);
 
-    // 不要再写死内参，而是使用我们在构造函数里从相机硬件动态读取的 fy_ 和 cy_
-    float optical_cy = cy_; 
-    float fy = fy_;         
+    // 直接使用 SDK 读取的完整内参 intr_
     int roi_y_offset = m.roi_box.y; // ROI 相对于全图的行偏移
+    int roi_x_offset = m.roi_box.x; // ROI 相对于全图的列偏移
 
     // 简单粗暴的物理滤除：只保留 y <= 10cm 的点云，地面的物理高度通常 y > 10cm（在相机下方）
     for (int r = 0; r < roi_m.rows; ++r) {
@@ -125,8 +122,14 @@ std::pair<bool, DetectMetrics> RealSenseStairDetector::detect_obstacle(const cv:
             float Z = pr[c];
             if (!is_valid_depth(Z)) continue;
 
-            // 根据针孔相机模型计算实际的物理 Y 坐标 (向下为正)
-            float physical_Y = (actual_r - optical_cy) * Z / fy;
+            float actual_c = roi_x_offset + c;
+            float pixel[2] = {actual_c, actual_r};
+            float point[3];
+
+            // 使用 RealSense SDK 计算三维坐标(X, Y, Z)
+            rs2_deproject_pixel_to_point(point, &intr_, pixel, Z);
+
+            float physical_Y = point[1];
 
             // 地面距离相机的垂直落差如果超过10cm (0.1m)，则剔除该点
             // y > 0.10m 意味着点云在镜头正中心下方10厘米以上的位置
