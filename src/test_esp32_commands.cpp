@@ -186,8 +186,7 @@ int main(int argc, char** argv) {
     });
 
     auto send_command = [&](const std::string& cmd) {
-        // 你的 ESP32 固件用 fgets(stdin)，所以必须带换行
-        std::string payload = cmd + "\n";
+        std::string payload = cmd + "\r\n";
         return write_all(serial_fd, payload);
     };
 
