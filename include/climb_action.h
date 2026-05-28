@@ -18,7 +18,7 @@ struct ClimbActionConfig {
     int serial_baud = 115200;
     std::string start_command = "CLIMB\n";
     std::string done_token = "DONE";
-    double timeout_sec = 24.0;
+    double timeout_sec = 60.0;
     std::string servo_port = "/dev/serial0";
     int servo_baud = 115200;
     double servo_duration_sec = 0.8;
