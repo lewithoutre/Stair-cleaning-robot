@@ -7,14 +7,20 @@
 #include <tuple>
 
 struct DetectMetrics {
+    // 主控制距离。当前 detect_obstacle() 中定义为滤除地面后的 p10_depth，
+    // 用于主程序 Approach 阶段判断是否到达安全视觉边界。
     double mean_depth = 0.0;
+
+    // 滤除地面后的最近点、10% 分位点、中位点距离。
     double min_depth = 0.0;
     double median_depth = 0.0;
     double p10_depth = 0.0;
+
     double valid_ratio = 0.0;
     double close_ratio = 0.0;
     double var_vertical = 0.0;
     double vertical_step = 0.0;
+
     cv::Rect roi_box;
 };
 

@@ -66,6 +66,7 @@ std::string env_string(const char* name, const std::string& fallback) {
 int env_int(const char* name, int fallback) {
     const char* value = std::getenv(name);
     if (!value) return fallback;
+
     try {
         return std::stoi(value);
     } catch (...) {
@@ -77,6 +78,7 @@ int env_int(const char* name, int fallback) {
 double env_double(const char* name, double fallback) {
     const char* value = std::getenv(name);
     if (!value) return fallback;
+
     try {
         return std::stod(value);
     } catch (...) {
@@ -88,6 +90,7 @@ double env_double(const char* name, double fallback) {
 bool env_bool(const char* name, bool fallback) {
     const char* value = std::getenv(name);
     if (!value) return fallback;
+
     const std::string s = env_string(name, "");
     return s == "1" || s == "true" || s == "TRUE" || s == "yes" || s == "on";
 }
@@ -98,15 +101,21 @@ bool has_display() {
 
 AppConfig load_config() {
     AppConfig cfg;
+
     cfg.width = env_int("STAIR_CAMERA_WIDTH", cfg.width);
     cfg.height = env_int("STAIR_CAMERA_HEIGHT", cfg.height);
     cfg.visualize = env_bool("STAIR_VISUALIZE", has_display());
 
     cfg.roi_height_ratio = env_double("STAIR_ROI_HEIGHT", cfg.roi_height_ratio);
     cfg.roi_width_ratio = env_double("STAIR_ROI_WIDTH", cfg.roi_width_ratio);
-    cfg.detect_dist = 0.30; // ==== 已修改：设置为 0.3m 触发减速 ====
+
+    // 设置为 0.3m 触发减速。
+    cfg.detect_dist = 0.30;
+
     cfg.step_edge_thresh = env_double("STAIR_STEP_EDGE", cfg.step_edge_thresh);
-    cfg.climb_start_dist = 0.05; // ==== 已修改：设置为 0.05m 停止起跳 ====
+
+    // 设置为 0.05m 停止起跳相关阈值。
+    cfg.climb_start_dist = 0.05;
 
     cfg.forward_speed = env_double("STAIR_FORWARD_SPEED", cfg.forward_speed);
     cfg.approach_speed = env_double("STAIR_APPROACH_SPEED", cfg.approach_speed);
@@ -149,6 +158,7 @@ const char* state_name(State state) {
         case State::Finished: return "FINISHED";
         case State::Error: return "ERROR";
     }
+
     return "UNKNOWN";
 }
 
@@ -159,6 +169,7 @@ const char* climb_mode_name(ClimbActionMode mode) {
         case ClimbActionMode::SerialTimed: return "serial_timed";
         case ClimbActionMode::SerialWaitDone: return "serial_wait_done";
     }
+
     return "unknown";
 }
 
@@ -172,6 +183,7 @@ std::string esp32_command_line(std::string command) {
     while (!command.empty() && (command.back() == '\n' || command.back() == '\r')) {
         command.pop_back();
     }
+
     command += "\r\n";
     return command;
 }
@@ -181,10 +193,18 @@ void send_esp32_command(ClimbAction& climb_action, const std::string& command) {
 }
 
 bool metric_ready_to_climb(const DetectMetrics& m, const AppConfig& cfg) {
-    if (m.valid_ratio <= 0.0) return false;
-    const bool median_close = m.median_depth > 0.0 && m.median_depth <= cfg.climb_start_dist;
-    const bool near_band_close = m.p10_depth > 0.0 && m.p10_depth <= cfg.climb_start_dist * 0.90;
+    if (m.valid_ratio <= 0.0) {
+        return false;
+    }
+
+    const bool median_close = m.median_depth > 0.0 &&
+                              m.median_depth <= cfg.climb_start_dist;
+
+    const bool near_band_close = m.p10_depth > 0.0 &&
+                                 m.p10_depth <= cfg.climb_start_dist * 0.90;
+
     const bool many_close_pixels = m.close_ratio > 0.35;
+
     return median_close || near_band_close || many_close_pixels;
 }
 
@@ -194,16 +214,20 @@ bool drive_for(RobotController& ctrl,
                double angular_z,
                double seconds,
                double publish_period_sec) {
-    if (seconds <= 0.0) return g_running.load();
+    if (seconds <= 0.0) {
+        return g_running.load();
+    }
 
     const auto end_time = std::chrono::steady_clock::now() +
                           std::chrono::duration<double>(seconds);
+
     const auto period = std::chrono::duration<double>(publish_period_sec);
 
     while (g_running && std::chrono::steady_clock::now() < end_time) {
         ctrl.set_velocity(linear_x, linear_y, angular_z);
         std::this_thread::sleep_for(period);
     }
+
     ctrl.stop();
     return g_running.load();
 }
@@ -238,18 +262,41 @@ void draw_overlay(cv::Mat& vis,
                   State state,
                   bool detected,
                   int stair_count) {
-    if (vis.empty()) return;
+    if (vis.empty()) {
+        return;
+    }
+
     if (metrics.roi_box.area() > 0) {
-        cv::rectangle(vis, metrics.roi_box, detected ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 255, 255), 2);
+        cv::rectangle(
+            vis,
+            metrics.roi_box,
+            detected ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 255, 255),
+            2
+        );
     }
 
     const std::string line1 = std::string("State ") + state_name(state) +
                               "  stairs " + std::to_string(stair_count);
-    const std::string line2 = std::string("med ") + fixed(metrics.median_depth) +
-                              "m p10 " + fixed(metrics.p10_depth) +
+
+    const std::string line2 = std::string("p10 ") + fixed(metrics.p10_depth) +
+                              "m min " + fixed(metrics.min_depth) +
                               "m edge " + fixed(metrics.vertical_step);
-    cv::putText(vis, line1, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(255, 255, 255), 2);
-    cv::putText(vis, line2, cv::Point(10, 58), cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(255, 255, 255), 2);
+
+    cv::putText(vis,
+                line1,
+                cv::Point(10, 30),
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.65,
+                cv::Scalar(255, 255, 255),
+                2);
+
+    cv::putText(vis,
+                line2,
+                cv::Point(10, 58),
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.55,
+                cv::Scalar(255, 255, 255),
+                2);
 }
 
 void print_config_summary(const AppConfig& cfg) {
@@ -277,6 +324,7 @@ int main(int, char**) {
     int confirmed_frames = 0;
     int lost_frames = 0;
     int stair_count = 0;
+
     auto last_log = std::chrono::steady_clock::now();
 
     try {
@@ -287,6 +335,7 @@ int main(int, char**) {
         while (g_running) {
             cv::Mat depth_u16;
             cv::Mat color_bgr;
+
             if (!detector.get_frames(depth_u16, color_bgr)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
@@ -302,79 +351,110 @@ int main(int, char**) {
 
             switch (state) {
                 case State::Search:
-                    // 只有检测到 y<=10cm （去除了地面） 的障碍物点云且 <= 0.3m 时 (detect_dist为0.3m)，才会触发 detected
+                    // 只有检测到 y <= 10cm，也就是滤除地面后的障碍物点云，
+                    // 并且 p10 距离 <= 0.3m 时，detected 才会触发。
                     controller.set_velocity(cfg.forward_speed, 0.0, 0.0);
+
                     confirmed_frames = detected ? confirmed_frames + 1 : 0;
+
                     if (confirmed_frames >= cfg.confirm_frames) {
                         controller.stop();
                         lost_frames = 0;
                         state = State::Approach;
-                        std::cout << "[FSM] Obstacle detected within 0.3m, slowing down to approach" << std::endl;
+
+                        std::cout << "[FSM] Obstacle detected within 0.3m, slowing down to approach"
+                                  << std::endl;
                     }
                     break;
 
                 case State::Approach:
-                    // 当距离到达 0.2m （安全相机边界），不再依赖视觉，直接“盲走”剩余的距离！
+                    // mean_depth 在 detector.cpp 中被定义为主控制距离。
+                    // 当前 mean_depth 等于滤除地面后的 p10 距离。
+                    // 当 p10 距离到达 0.2m 安全相机边界后，不再依赖视觉，
+                    // 直接盲走剩余距离。
                     if (metrics.mean_depth > 0.0 && metrics.mean_depth <= 0.20) {
-                        std::cout << "[FSM] Reached stable vision limit (0.20m). Blind driving the remaining 15cm!" << std::endl;
-                        
-                        // 盲走策略：需要直接盲走 0.15m 
-                        // 计算盲走需要的时间：时间 = 距离 / 速度
-                        double blind_drive_dist = 0.15; 
-                        double blind_drive_sec = blind_drive_dist / cfg.approach_speed;
-                        
-                        if (!drive_for(controller, cfg.approach_speed, 0.0, 0.0, blind_drive_sec, cfg.publish_period_sec)) {
+                        std::cout << "[FSM] Reached stable vision limit (0.20m). "
+                                  << "Blind driving the remaining 15cm!"
+                                  << std::endl;
+
+                        const double blind_drive_dist = 0.15;
+                        const double blind_drive_sec = blind_drive_dist / cfg.approach_speed;
+
+                        if (!drive_for(controller,
+                                       cfg.approach_speed,
+                                       0.0,
+                                       0.0,
+                                       blind_drive_sec,
+                                       cfg.publish_period_sec)) {
                             state = State::Error;
                             break;
                         }
-                        
+
                         controller.stop();
                         state = State::Sweep;
-                        std::cout << "[FSM] Blind drive finished! Stopping and ready to sweep & climb!" << std::endl;
-                        
+
+                        std::cout << "[FSM] Blind drive finished! "
+                                  << "Stopping and ready to sweep & climb!"
+                                  << std::endl;
+
                     } else if (metrics.mean_depth > 0.20) {
-                        // 还在 0.3m 到 0.2m 之间，继续依靠视觉慢速逼近
+                        // 还在 0.3m 到 0.2m 之间，继续依靠视觉慢速逼近。
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
-                        lost_frames = 0; // 能看到大于 0.20 的，说明没丢
+                        lost_frames = 0;
+
                     } else {
-                        // 万一是突发的全黑 (比如反光或者突然后退导致看不到)，容错机制
+                        // 容错：如果突然没有有效深度点，继续短暂慢速前进。
                         controller.set_velocity(cfg.approach_speed, 0.0, 0.0);
                         lost_frames++;
+
                         if (lost_frames > cfg.lost_frames) {
                             controller.stop();
                             confirmed_frames = 0;
                             state = State::Search;
-                            std::cout << "[FSM] Obstacle lost during early approach, resume searching" << std::endl;
+
+                            std::cout << "[FSM] Obstacle lost during early approach, resume searching"
+                                      << std::endl;
                         }
                     }
                     break;
 
                 case State::Sweep:
                     controller.stop();
+
                     if (!run_sweep(controller, cfg, climb_action)) {
                         state = State::Error;
                         break;
                     }
+
                     state = State::Climb;
                     break;
 
                 case State::Climb:
                     controller.stop();
-                    if (!drive_for(controller, 0.0, 0.0, 0.0, 0.30, cfg.publish_period_sec)) {
+
+                    if (!drive_for(controller,
+                                   0.0,
+                                   0.0,
+                                   0.0,
+                                   0.30,
+                                   cfg.publish_period_sec)) {
                         state = State::Error;
                         break;
                     }
+
                     if (!climb_action.run_once(stair_count + 1)) {
                         state = State::Error;
                         g_running = false;
                         break;
                     }
+
                     ++stair_count;
                     state = State::Recover;
                     break;
 
                 case State::Recover:
                     std::cout << "[FSM] recover forward after climb" << std::endl;
+
                     if (!drive_for(controller,
                                    cfg.forward_speed,
                                    0.0,
@@ -384,8 +464,10 @@ int main(int, char**) {
                         state = State::Error;
                         break;
                     }
+
                     confirmed_frames = 0;
                     lost_frames = 0;
+
                     if (cfg.max_stairs > 0 && stair_count >= cfg.max_stairs) {
                         state = State::Finished;
                         g_running = false;
@@ -401,11 +483,13 @@ int main(int, char**) {
             }
 
             const auto now = std::chrono::steady_clock::now();
+
             if (now - last_log > std::chrono::seconds(1)) {
                 last_log = now;
+
                 std::cout << "[state] " << state_name(state)
                           << " detected=" << (detected ? "yes" : "no")
-                          << " median=" << fixed(metrics.median_depth)
+                          << " min=" << fixed(metrics.min_depth)
                           << " p10=" << fixed(metrics.p10_depth)
                           << " close=" << fixed(metrics.close_ratio, 2)
                           << " edge=" << fixed(metrics.vertical_step)
@@ -415,7 +499,9 @@ int main(int, char**) {
             if (cfg.visualize) {
                 cv::Mat vis = detector.colorize_depth(depth_u16);
                 draw_overlay(vis, metrics, state, detected, stair_count);
+
                 cv::imshow("stair depth", vis);
+
                 const int key = cv::waitKey(1);
                 if (key == 'q' || key == 27) {
                     g_running = false;
@@ -425,6 +511,7 @@ int main(int, char**) {
 
         controller.stop();
         detector.stop();
+
     } catch (const std::exception& e) {
         std::cerr << "[fatal] " << e.what() << std::endl;
         state = State::Error;
@@ -435,6 +522,8 @@ int main(int, char**) {
     }
 
     std::cout << "[exit] state=" << state_name(state)
-              << " stairs=" << stair_count << std::endl;
+              << " stairs=" << stair_count
+              << std::endl;
+
     return state == State::Error ? 1 : 0;
 }
