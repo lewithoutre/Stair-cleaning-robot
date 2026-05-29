@@ -39,7 +39,7 @@ struct AppConfig {
     double step_edge_thresh = 0.12;
     double climb_start_dist = 0.05;
 
-    double forward_speed = 0.10;
+    double forward_speed = 0.20;
     double approach_speed = 0.06;
     double sweep_speed = 0.10;
     double sweep_sec = 2.5;
